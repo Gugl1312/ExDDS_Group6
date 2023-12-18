@@ -1,4 +1,7 @@
-def clusterBasedBanditAlgorithm(B, C, D):
+def clusterBasedBanditAlgorithm(B, C, D): # Algorithm 1
+    pass
+
+def g_exploration(): # Algorithm 2
     pass
 
 def main():
