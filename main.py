@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 import warnings
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import sys
 warnings.filterwarnings("ignore")
 
@@ -72,54 +72,103 @@ def clusterUsers(X, n_clusters, max_iter=10): # TODO: BLC matrix-factorization c
 
     return labels
 
-def generateRatings(mean, var):
-    return np.random.normal(mean, var)
+def get_performance(data, user_ratings):
+    return 0, 0
+
+def generateRatings(mean, var, g, v):
+    return np.random.normal(mean.loc[g][1:], var.loc[g][1:])[0]
 
 def g_hat_select():
     return
 
+def define_candidate_set(V_n, g_hat, G, mean, var):
+    return
+
 def clusterBasedBanditAlgorithm(B, C, D, G, mean, var): # Algorithm 1
     V_n = []
-    print('unique clusters', len(G['cluster'].unique()))
+
     g_hat = G.iloc[random.randint(0, len(G['cluster'].unique()) - 1)]
+    V_n = g_exploration(V_n, g_hat, G, mean, var)
+    n = len(list(mean.columns[1:]))
 
-    Mn = ...
-
-    if Mn is not None:
-        g_hat_select()
-        g_exploration()
-    n = 0
-    while n < 25:
-        candidate = ...
-        if candidate is not None:
-            ...
-    return
-
-
-def g_exploration(V_n, g_hat, mean, var, n): # Algorithm 2
-    n = len(V_n) + 1
     for i in range(n):
-        pass
-    return
+        M_n = define_candidate_set(V_n, g_hat, G, mean, var)
+        if M_n is not None:
+            g_hat = g_hat_select()
+            V_n = g_exploration(V_n, g_hat, G, mean, var)
+            if (len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique()))): # TODO evaluate first condition
+                # estimate user is for that group
+                return V_n
+        else:
+            # TODO select g_hat, h
+            V_n = g_exploration(V_n, g_hat, G, mean, var)
 
-def Ggh(g, h, v, mean, var):
-    return ((mean[mean['cluster'] == g][str(g)] + mean[mean['cluster'] == g][str(h)])**2) / (var[var['cluster' == g]][str(g)])
+def g_exploration(V_n, g_hat, G, mean, var): # Algorithm 2
+    print('V_n:', V_n)
+    n = len(V_n)
+    groups = G['cluster'].unique()
+
+    if n == 0: # rating the first item
+        while True:
+            h = random.randint(0, len(G['cluster'].unique()) - 1)
+            if h != g_hat['cluster']:
+                break
+        entities = list(mean.columns[1:])
+        max_i = 0
+        max_ = -1
+        for e in entities:
+            val = Ggh(g_hat['cluster'], h, int(e), mean, var)
+            if val > max_:
+                max_ = val
+                max_i = e
+        V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, var, g_hat['cluster'], max_i)})
+        print('returning V_n:', V_n)
+        return V_n
+    h = -1
+    Min_ = np.inf
+    for h_i in groups:
+        min_ = 0
+        for i in range(n):
+            min_ += Ggh(g_hat['cluster'], h_i, V_n[i]['entity_id'], mean, var)
+        if min_ < Min_:
+            Min_ = min_
+            h = h_i
+    # TODO rate a not rated item, max rated entity
+    entities = list(mean.columns[1:])
+    max_i = 0
+    max_ = -1
+    for e in entities:
+        val = Ggh(g_hat['cluster'], h, int(e), mean, var)
+        if val > max_:
+            max_ = val
+            max_i = e
+    V_n.append({'entity_id': h, 'rating': generateRatings(mean, var, g_hat['cluster'], max_i)})
+    print('returning V_n:', V_n)
+    return V_n
+
+def Ggh(g, h, i, mean, var): # Г_gh(v)
+    return ((mean.loc[g][i] + mean.loc[h][i])**2) / (var.loc[g][i])
 
 def evaluate(dataset_n):
     print("Evaluating dataset " + str(dataset_n))
     data = import_dataset(dataset_n)
-    print(data)
-    for i in [4, 8, 16, 32]:
-        print("Running algorithm with " + str(i) + " clusters")
-        clusters = clusterUsers(data, i)
-        print(clusters)
-        data['cluster'] = clusters
-        cluster_mean = data.groupby('cluster').mean(numeric_only=True)
-        cluster_var = data.groupby('cluster').var(numeric_only=True)
+    overall_accuracy = []
+    overall_convergence_time = []
 
-        G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
-        clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var)    
-        return
+    for u in tqdm(range(1000), desc = "Running the algorithm for different users", total=1000):
+        for i in [4, 8, 16, 32]:
+            clusters = clusterUsers(data, i)
+            data['cluster'] = clusters
+            cluster_mean = data.groupby('cluster').mean(numeric_only=True)
+            cluster_var = data.groupby('cluster').var(numeric_only=True)
+
+            G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
+            user_ratings = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var)
+            accuracy, convergence_time = get_performance(data, user_ratings)
+            overall_accuracy.append(accuracy)
+            overall_convergence_time.append(convergence_time)
+    print("Average accuracy: " + str(np.mean(overall_accuracy)))
+    print("Average convergence time: " + str(np.mean(overall_convergence_time)))
 
 def test_all_datasets():
     for i in range(1, 4): # example to test all of the datasets

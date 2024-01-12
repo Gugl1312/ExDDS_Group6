@@ -5,9 +5,8 @@ from tqdm import tqdm
 def convert_netflix_file(file_name):
   file = pd.read_csv(file_name, names = ['user_id', 'Rating'], usecols = [0, 1], header=None)
   file['movie_id'] = 0
-  print(file)
   movie_id = 0
-  for index, row in tqdm(file.iterrows(), desc="Splitting movie IDs", total=len(file)):
+  for index, row in tqdm(file.iterrows(), desc="Converting " + file_name, total=len(file)):
     if row.isna().sum() > 0:
       movie_id = row['user_id'].split(':')[0]
     else:
@@ -73,7 +72,7 @@ def main():
     convert_netflix_file("data/Netflix/combined_data_3.txt")
     convert_netflix_file("data/Netflix/combined_data_4.txt")
     combine_netflix_files()
-    pivot_netflix_data()
+    pivot_netflix_data() # Only run if you have more than 24GB of RAM
   elif (args.dataset == "Jester"):
     combine_jester_data()
   elif (args.dataset == "Goodreads"):
