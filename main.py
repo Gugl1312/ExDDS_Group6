@@ -5,27 +5,30 @@ from sklearn.cluster import KMeans
 import warnings
 from tqdm import tqdm, trange
 import sys
+
 warnings.filterwarnings("ignore")
 
+
 def import_dataset(n):
-    if n == 1: # Netflix dataset
+    if n == 1:  # Netflix dataset
         data = pd.read_csv('data/Netflix/data_final.csv')
         return data
-    elif n == 2: # Jester dataset
+    elif n == 2:  # Jester dataset
         X = pd.read_csv('data/Jester/jester_final.csv')
         X.columns = X.columns.astype(str)
         X.replace(999, np.nan, inplace=True)
         X.rename(columns={'0': 'user_id'}, inplace=True)
         X['user_id'] = range(1, len(X) + 1)
         return X
-    elif n == 3: # Goodreads10K dataset
+    elif n == 3:  # Goodreads10K dataset
         data = pd.read_csv('data/Goodreads10K/ratings_final.csv')
         return data
     else:
         print("Error: invalid dataset number")
         return None
 
-def clusterUsers(X, n_clusters, max_iter=10): # TODO: BLC matrix-factorization clustering algorithm later?
+
+def clusterUsers(X, n_clusters, max_iter=10):
     """Perform K-Means clustering on data with missing values.
        Implementation of the algorithm borrowed from:https://stackoverflow.com/questions/35611465/python-scikit-learn-clustering-with-missing-data
        Based on a paper: https://arxiv.org/pdf/1411.7013.pdf
@@ -72,19 +75,24 @@ def clusterUsers(X, n_clusters, max_iter=10): # TODO: BLC matrix-factorization c
 
     return labels
 
+
 def get_performance(data, user_ratings):
     return 0, 0
+
 
 def generateRatings(mean, var, g, v):
     return np.random.normal(mean.loc[g][1:], var.loc[g][1:])[0]
 
+
 def g_hat_select():
     return
+
 
 def define_candidate_set(V_n, g_hat, G, mean, var):
     return
 
-def clusterBasedBanditAlgorithm(B, C, D, G, mean, var): # Algorithm 1
+
+def clusterBasedBanditAlgorithm(B, C, D, G, mean, var):  # Algorithm 1
     V_n = []
 
     g_hat = G.iloc[random.randint(0, len(G['cluster'].unique()) - 1)]
@@ -96,19 +104,20 @@ def clusterBasedBanditAlgorithm(B, C, D, G, mean, var): # Algorithm 1
         if M_n is not None:
             g_hat = g_hat_select()
             V_n = g_exploration(V_n, g_hat, G, mean, var)
-            if (len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique()))): # TODO evaluate first condition
+            if (len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique()))):  # TODO evaluate first condition
                 # estimate user is for that group
                 return V_n
         else:
             # TODO select g_hat, h
             V_n = g_exploration(V_n, g_hat, G, mean, var)
 
-def g_exploration(V_n, g_hat, G, mean, var): # Algorithm 2
+
+def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
     print('V_n:', V_n)
     n = len(V_n)
     groups = G['cluster'].unique()
 
-    if n == 0: # rating the first item
+    if n == 0:  # rating the first item
         while True:
             h = random.randint(0, len(G['cluster'].unique()) - 1)
             if h != g_hat['cluster']:
@@ -146,8 +155,10 @@ def g_exploration(V_n, g_hat, G, mean, var): # Algorithm 2
     print('returning V_n:', V_n)
     return V_n
 
-def Ggh(g, h, i, mean, var): # Г_gh(v)
-    return ((mean.loc[g][i] + mean.loc[h][i])**2) / (var.loc[g][i])
+
+def Ggh(g, h, i, mean, var):  # Г_gh(v)
+    return ((mean.loc[g][i] + mean.loc[h][i]) ** 2) / (var.loc[g][i])
+
 
 def evaluate(dataset_n):
     print("Evaluating dataset " + str(dataset_n))
@@ -155,7 +166,7 @@ def evaluate(dataset_n):
     overall_accuracy = []
     overall_convergence_time = []
 
-    for u in tqdm(range(1000), desc = "Running the algorithm for different users", total=1000):
+    for u in tqdm(range(1000), desc="Running the algorithm for different users", total=1000):
         for i in [4, 8, 16, 32]:
             clusters = clusterUsers(data, i)
             data['cluster'] = clusters
@@ -170,9 +181,11 @@ def evaluate(dataset_n):
     print("Average accuracy: " + str(np.mean(overall_accuracy)))
     print("Average convergence time: " + str(np.mean(overall_convergence_time)))
 
+
 def test_all_datasets():
-    for i in range(1, 4): # example to test all of the datasets
+    for i in range(1, 4):  # example to test all of the datasets
         evaluate(i)
+
 
 def main():
     evaluate(2)
