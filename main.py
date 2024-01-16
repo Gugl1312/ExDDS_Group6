@@ -76,6 +76,17 @@ def clusterUsers(X, n_clusters, max_iter=10):
     return labels
 
 
+def Ggh(g, h, i, mean, var):  # Г_gh(v)
+    return ((mean.loc[g][i] + mean.loc[h][i]) ** 2) / (var.loc[g][i])
+
+
+def calc_alpha(g, h, i, mean, var, n):
+    total = 0
+    for a in range(n):
+        total += Ggh(g, h, a, mean, var)
+    return Ggh(g, h, i, mean, var) / total
+
+
 def get_performance(data, user_ratings):
     return 0, 0
 
@@ -84,31 +95,77 @@ def generateRatings(mean, var, g, v):
     return np.random.normal(mean.loc[g][1:], var.loc[g][1:])[0]
 
 
-def g_hat_select():
-    return
+def g_hat_select(V_n, G, mean, var, n):
+    g_hat = None
+    maxVal = None
+    for g in G["cluster"].unique():
+        minVal = None
+        for h in G["cluster"].unique():
+            if g != h:
+                Rn = abs(calc_Rn(V_n, g, h, mean, var, n))
+                if minVal == None or Rn < minVal:
+                    minVal = Rn
+        if maxVal is None or minVal > maxVal:
+            g_hat = g
+            maxVal = minVal
+    return g_hat
 
 
-def define_candidate_set(V_n, g_hat, G, mean, var):
-    return
+def calc_Rn(V_n, g, h, mean, var, n):
+    total = 0
+    for i in range(n):
+        total += calc_alpha(g, h, i, mean, var, n) * (V_n[i]["rating"] - mean.loc[h][i]) / (
+                mean.loc[g][i] - mean.loc[h][i])
+    return total
+
+
+def define_candidate_set(V_n, G, mean, var, C, n):
+    M_n = []
+    for g in G["cluster"].unique():
+        minVal = None
+        for h in G["cluster"].unique():
+            if g != h:
+                Rn = abs(calc_Rn(V_n, g, h, mean, var, n))
+                if minVal is None or Rn < minVal:
+                    minVal = Rn
+
+        if abs(minVal - 1) <= C:
+            M_n.append(g)
+    return M_n
+
+
+def g_hat_select2(V_n, G, mean, var, n):
+    g_hat = None
+    minVal = None
+    for g in G["cluster"].unique():
+        for h in G["cluster"].unique():
+            if g != h:
+                total = 0
+                for i in range(n):
+                    total += Ggh(g, h, i, mean, var)
+                if minVal is None or total < minVal:
+                    minVal = total
+                    g_hat = g
+    return g_hat
 
 
 def clusterBasedBanditAlgorithm(B, C, D, G, mean, var):  # Algorithm 1
     V_n = []
 
-    g_hat = G.iloc[random.randint(0, len(G['cluster'].unique()) - 1)]
+    g_hat = G.iloc[random.randint(0, len(G['cluster'].unique()) - 1)]["cluster"]
     V_n = g_exploration(V_n, g_hat, G, mean, var)
     n = len(list(mean.columns[1:]))
 
     for i in range(n):
-        M_n = define_candidate_set(V_n, g_hat, G, mean, var)
+        M_n = define_candidate_set(V_n, G, mean, var, C, i)
         if M_n is not None:
-            g_hat = g_hat_select()
+            g_hat = g_hat_select(V_n, G, mean, var, i)
             V_n = g_exploration(V_n, g_hat, G, mean, var)
-            if (len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique()))):  # TODO evaluate first condition
-                # estimate user is for that group
+            if ((len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique())))):  # TODO First condition
+                # TODO estimate user is for that group
                 return V_n
         else:
-            # TODO select g_hat, h
+            g_hat = g_hat_select2(V_n, G, mean, var, i)
             V_n = g_exploration(V_n, g_hat, G, mean, var)
 
 
@@ -120,17 +177,17 @@ def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
     if n == 0:  # rating the first item
         while True:
             h = random.randint(0, len(G['cluster'].unique()) - 1)
-            if h != g_hat['cluster']:
+            if h != g_hat:
                 break
         entities = list(mean.columns[1:])
         max_i = 0
         max_ = -1
         for e in entities:
-            val = Ggh(g_hat['cluster'], h, int(e), mean, var)
+            val = Ggh(g_hat, h, int(e), mean, var)
             if val > max_:
                 max_ = val
                 max_i = e
-        V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, var, g_hat['cluster'], max_i)})
+        V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, var, g_hat, max_i)})
         print('returning V_n:', V_n)
         return V_n
     h = -1
@@ -138,7 +195,7 @@ def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
     for h_i in groups:
         min_ = 0
         for i in range(n):
-            min_ += Ggh(g_hat['cluster'], h_i, V_n[i]['entity_id'], mean, var)
+            min_ += Ggh(g_hat, h_i, V_n[i]['entity_id'], mean, var)
         if min_ < Min_:
             Min_ = min_
             h = h_i
@@ -147,17 +204,13 @@ def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
     max_i = 0
     max_ = -1
     for e in entities:
-        val = Ggh(g_hat['cluster'], h, int(e), mean, var)
+        val = Ggh(g_hat, h, int(e), mean, var)
         if val > max_:
             max_ = val
             max_i = e
-    V_n.append({'entity_id': h, 'rating': generateRatings(mean, var, g_hat['cluster'], max_i)})
+    V_n.append({'entity_id': h, 'rating': generateRatings(mean, var, g_hat, max_i)})
     print('returning V_n:', V_n)
     return V_n
-
-
-def Ggh(g, h, i, mean, var):  # Г_gh(v)
-    return ((mean.loc[g][i] + mean.loc[h][i]) ** 2) / (var.loc[g][i])
 
 
 def evaluate(dataset_n):
