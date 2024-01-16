@@ -97,18 +97,22 @@ def generateRatings(mean, var, g, v):
 
 def g_hat_select(V_n, G, mean, var, n):
     g_hat = None
+    h_hat_max = None
     maxVal = None
     for g in G["cluster"].unique():
         minVal = None
+        h_hat_min = None
         for h in G["cluster"].unique():
             if g != h:
                 Rn = abs(calc_Rn(V_n, g, h, mean, var, n))
                 if minVal == None or Rn < minVal:
                     minVal = Rn
+                    h_hat_min = h
         if maxVal is None or minVal > maxVal:
             g_hat = g
+            h_hat_max = h_hat_min
             maxVal = minVal
-    return g_hat
+    return g_hat, h_hat_max
 
 
 def calc_Rn(V_n, g, h, mean, var, n):
@@ -149,6 +153,13 @@ def g_hat_select2(V_n, G, mean, var, n):
     return g_hat
 
 
+def calc_sigma_n(g, h, n, mean, var):
+    total = 0
+    for i in range(n):
+        total += Ggh(g, h, i, mean, var)
+    return total
+
+
 def clusterBasedBanditAlgorithm(B, C, D, G, mean, var):  # Algorithm 1
     V_n = []
 
@@ -159,11 +170,10 @@ def clusterBasedBanditAlgorithm(B, C, D, G, mean, var):  # Algorithm 1
     for i in range(n):
         M_n = define_candidate_set(V_n, G, mean, var, C, i)
         if M_n is not None:
-            g_hat = g_hat_select(V_n, G, mean, var, i)
+            g_hat, h = g_hat_select(V_n, G, mean, var, i)
             V_n = g_exploration(V_n, g_hat, G, mean, var)
-            if ((len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique())))):  # TODO First condition
-                # TODO estimate user is for that group
-                return V_n
+            if calc_sigma_n(g_hat, h, i, mean, var) >= B or (len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique()))):
+                return V_n, g_hat
         else:
             g_hat = g_hat_select2(V_n, G, mean, var, i)
             V_n = g_exploration(V_n, g_hat, G, mean, var)
@@ -227,7 +237,7 @@ def evaluate(dataset_n):
             cluster_var = data.groupby('cluster').var(numeric_only=True)
 
             G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
-            user_ratings = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var)
+            user_ratings,g_hat = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var)
             accuracy, convergence_time = get_performance(data, user_ratings)
             overall_accuracy.append(accuracy)
             overall_convergence_time.append(convergence_time)
