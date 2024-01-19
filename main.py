@@ -87,8 +87,37 @@ def calc_alpha(g, h, i, mean, var, n):
     return Ggh(g, h, i, mean, var) / total
 
 
-def get_performance(data, user_ratings):
-    return 0, 0
+def get_performance(user_ratings, initial_cluster, est_cluster):  
+
+    # Accuracy
+    accuracy = (initial_cluster == est_cluster)
+
+    # Regret
+    user_ratings = pd.DataFrame(user_ratings)
+    user_ratings['rating'].astype(float)
+    user_ratings_sorted = sorted(user_ratings.values, key=lambda x: x[1], reverse=True)
+    # print('sui', user_ratings_sorted[0][1])
+    highest_rating = user_ratings_sorted[0][1]
+    
+    regret = 0
+    for i in range(len(user_ratings_sorted)): 
+        generated_rating = user_ratings_sorted[i][1]
+        regret += float(highest_rating) - float(generated_rating)
+
+    # Convergence time
+    final_value = round(0.8 * regret)
+    convergence_time = 0
+    regr = 0
+
+    for i in range(len(user_ratings.values)):
+        convergence_time += 1
+        generated_rating = user_ratings.values[i][1]
+        regr += float(highest_rating) - float(generated_rating)
+
+        if regr >= final_value:
+            break
+
+    return accuracy, regret, convergence_time
 
 
 def generateRatings(mean, var, g, v):
@@ -160,10 +189,12 @@ def calc_sigma_n(g, h, n, mean, var):
     return total
 
 
-def clusterBasedBanditAlgorithm(B, C, D, G, mean, var):  # Algorithm 1
+def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_hat=None):  # Algorithm 1
     V_n = []
 
-    g_hat = G.iloc[random.randint(0, len(G['cluster'].unique()) - 1)]["cluster"]
+    if g_hat is None:
+        g_hat = G.iloc[random.randint(0, len(G['cluster'].unique()) - 1)]["cluster"]
+
     V_n = g_exploration(V_n, g_hat, G, mean, var)
     n = len(list(mean.columns[1:]))
 
@@ -177,10 +208,11 @@ def clusterBasedBanditAlgorithm(B, C, D, G, mean, var):  # Algorithm 1
         else:
             g_hat = g_hat_select2(V_n, G, mean, var, i)
             V_n = g_exploration(V_n, g_hat, G, mean, var)
+    return V_n, g_hat
 
 
 def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
-    print('V_n:', V_n)
+    # print('V_n:', V_n)
     n = len(V_n)
     groups = G['cluster'].unique()
 
@@ -198,7 +230,7 @@ def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
                 max_ = val
                 max_i = e
         V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, var, g_hat, max_i)})
-        print('returning V_n:', V_n)
+        # print('returning V_n:', V_n)
         return V_n
     h = -1
     Min_ = np.inf
@@ -219,30 +251,35 @@ def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
             max_ = val
             max_i = e
     V_n.append({'entity_id': h, 'rating': generateRatings(mean, var, g_hat, max_i)})
-    print('returning V_n:', V_n)
+    # print('returning V_n:', V_n)
     return V_n
 
 
-def evaluate(dataset_n):
+def evaluate(dataset_n, nclusters):
     print("Evaluating dataset " + str(dataset_n))
     data = import_dataset(dataset_n)
+
+    clusters = clusterUsers(data, nclusters)
+    data['cluster'] = clusters
+    cluster_mean = data.groupby('cluster').mean(numeric_only=True)
+    cluster_var = data.groupby('cluster').var(numeric_only=True)
+    G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
+
     overall_accuracy = []
+    overall_regret = []
     overall_convergence_time = []
 
-    for u in tqdm(range(1000), desc="Running the algorithm for different users", total=1000):
-        for i in [4, 8, 16, 32]:
-            clusters = clusterUsers(data, i)
-            data['cluster'] = clusters
-            cluster_mean = data.groupby('cluster').mean(numeric_only=True)
-            cluster_var = data.groupby('cluster').var(numeric_only=True)
+    for i in range(nclusters):
+        for u in tqdm(range(1000), desc="Running the algorithm for different users", total=1000):
 
-            G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
-            user_ratings,g_hat = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var)
-            accuracy, convergence_time = get_performance(data, user_ratings)
+            user_ratings, g_hat = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var, g_hat=i)
+            accuracy, regret, convergence_time = get_performance(user_ratings, initial_cluster=i, est_cluster=g_hat)
             overall_accuracy.append(accuracy)
+            overall_regret.append(regret)
             overall_convergence_time.append(convergence_time)
     print("Average accuracy: " + str(np.mean(overall_accuracy)))
-    print("Average convergence time: " + str(np.mean(overall_convergence_time)))
+    print("Average regret: " + str(np.mean(overall_regret)) + "std for regret:" + str(np.std(overall_regret)))
+    print("Average convergence time: " + str(np.mean(overall_convergence_time)) + "std for convergence time:" + str(np.std(overall_convergence_time)))
 
 
 def test_all_datasets():
@@ -251,7 +288,7 @@ def test_all_datasets():
 
 
 def main():
-    evaluate(2)
+    evaluate(2, 4)
 
 
 if __name__ == '__main__':
