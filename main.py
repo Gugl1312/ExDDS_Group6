@@ -3,8 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 import warnings
-from tqdm import tqdm, trange
-import sys
+from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
@@ -80,15 +79,15 @@ def Ggh(g, h, i, mean, var):  # Г_gh(v)
     return ((mean.loc[g][i] + mean.loc[h][i]) ** 2) / (var.loc[g][i])
 
 
-def calc_alpha(g, h, i, mean, var, n):
+def calc_alpha(g, h, i, mean, var, V_n):
     total = 0
-    for a in range(n):
+    for v in V_n:
+        a = v["entity_id"]
         total += Ggh(g, h, a, mean, var)
     return Ggh(g, h, i, mean, var) / total
 
 
-def get_performance(user_ratings, initial_cluster, est_cluster):  
-
+def get_performance(user_ratings, initial_cluster, est_cluster):
     # Accuracy
     accuracy = (initial_cluster == est_cluster)
 
@@ -98,9 +97,9 @@ def get_performance(user_ratings, initial_cluster, est_cluster):
     user_ratings_sorted = sorted(user_ratings.values, key=lambda x: x[1], reverse=True)
     # print('sui', user_ratings_sorted[0][1])
     highest_rating = user_ratings_sorted[0][1]
-    
+
     regret = 0
-    for i in range(len(user_ratings_sorted)): 
+    for i in range(len(user_ratings_sorted)):
         generated_rating = user_ratings_sorted[i][1]
         regret += float(highest_rating) - float(generated_rating)
 
@@ -121,10 +120,10 @@ def get_performance(user_ratings, initial_cluster, est_cluster):
 
 
 def generateRatings(mean, var, g, v):
-    return np.random.normal(mean.loc[g][1:], var.loc[g][1:])[0]
+    return np.random.normal(mean.loc[g][v], var.loc[g][v])
 
 
-def g_hat_select(V_n, G, mean, var, n):
+def g_hat_select(V_n, G, mean, var):
     g_hat = None
     h_hat_max = None
     maxVal = None
@@ -133,8 +132,8 @@ def g_hat_select(V_n, G, mean, var, n):
         h_hat_min = None
         for h in G["cluster"].unique():
             if g != h:
-                Rn = abs(calc_Rn(V_n, g, h, mean, var, n))
-                if minVal == None or Rn < minVal:
+                Rn = abs(calc_Rn(V_n, g, h, mean, var))
+                if minVal is None or Rn < minVal:
                     minVal = Rn
                     h_hat_min = h
         if maxVal is None or minVal > maxVal:
@@ -144,11 +143,14 @@ def g_hat_select(V_n, G, mean, var, n):
     return g_hat, h_hat_max
 
 
-def calc_Rn(V_n, g, h, mean, var, n):
+def calc_Rn(V_n, g, h, mean, var):
     total = 0
-    for i in range(n):
-        total += calc_alpha(g, h, i, mean, var, n) * (V_n[i]["rating"] - mean.loc[h][i]) / (
+    index=0
+    for v in V_n:
+        i = v["entity_id"]
+        total += calc_alpha(g, h, i, mean, var, V_n) * (V_n[index]["rating"] - mean.loc[h][i]) / (
                 mean.loc[g][i] - mean.loc[h][i])
+        index+=1
     return total
 
 
@@ -158,7 +160,7 @@ def define_candidate_set(V_n, G, mean, var, C, n):
         minVal = None
         for h in G["cluster"].unique():
             if g != h:
-                Rn = abs(calc_Rn(V_n, g, h, mean, var, n))
+                Rn = abs(calc_Rn(V_n, g, h, mean, var))
                 if minVal is None or Rn < minVal:
                     minVal = Rn
 
@@ -174,7 +176,8 @@ def g_hat_select2(V_n, G, mean, var, n):
         for h in G["cluster"].unique():
             if g != h:
                 total = 0
-                for i in range(n):
+                for v in V_n:
+                    i=v["entity_id"]
                     total += Ggh(g, h, i, mean, var)
                 if minVal is None or total < minVal:
                     minVal = total
@@ -182,36 +185,35 @@ def g_hat_select2(V_n, G, mean, var, n):
     return g_hat
 
 
-def calc_sigma_n(g, h, n, mean, var):
+def calc_sigma_n(g, h, V_n, mean, var):
     total = 0
-    for i in range(n):
+    for v in V_n:
+        i=v["entity_id"]
         total += Ggh(g, h, i, mean, var)
     return total
 
 
-def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_hat=None):  # Algorithm 1
+def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_actual):  # Algorithm 1
     V_n = []
 
-    if g_hat is None:
-        g_hat = G.iloc[random.randint(0, len(G['cluster'].unique()) - 1)]["cluster"]
-
-    V_n = g_exploration(V_n, g_hat, G, mean, var)
+    g_hat = random.randint(0, len(G['cluster'].unique()) - 1)
+    V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
     n = len(list(mean.columns[1:]))
-
     for i in range(n):
         M_n = define_candidate_set(V_n, G, mean, var, C, i)
         if M_n is not None:
-            g_hat, h = g_hat_select(V_n, G, mean, var, i)
-            V_n = g_exploration(V_n, g_hat, G, mean, var)
-            if calc_sigma_n(g_hat, h, i, mean, var) >= B or (len(M_n) == 1 and n > D * np.log2(len(G['cluster'].unique()))):
+            g_hat, h = g_hat_select(V_n, G, mean, var)
+            V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
+            if calc_sigma_n(g_hat, h, V_n, mean, var) >= B or (
+                    len(M_n) == 1 and (i + 1) > D * np.log2(len(G['cluster'].unique()))):
                 return V_n, g_hat
         else:
             g_hat = g_hat_select2(V_n, G, mean, var, i)
-            V_n = g_exploration(V_n, g_hat, G, mean, var)
+            V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
     return V_n, g_hat
 
 
-def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
+def g_exploration(V_n, g_hat, G, mean, var, g_actual):  # Algorithm 2
     # print('V_n:', V_n)
     n = len(V_n)
     groups = G['cluster'].unique()
@@ -221,36 +223,35 @@ def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
             h = random.randint(0, len(G['cluster'].unique()) - 1)
             if h != g_hat:
                 break
-        entities = list(mean.columns[1:])
         max_i = 0
         max_ = -1
-        for e in entities:
-            val = Ggh(g_hat, h, int(e), mean, var)
+        for v in V_n:
+            e= v["entity_id"]
+            val = Ggh(g_hat, h, e, mean, var)
             if val > max_:
                 max_ = val
                 max_i = e
-        V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, var, g_hat, max_i)})
+        V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, var, g_actual, max_i)})
         # print('returning V_n:', V_n)
         return V_n
     h = -1
     Min_ = np.inf
     for h_i in groups:
         min_ = 0
-        for i in range(n):
+        for i in range(len(V_n)):
             min_ += Ggh(g_hat, h_i, V_n[i]['entity_id'], mean, var)
         if min_ < Min_:
             Min_ = min_
             h = h_i
-    # TODO rate a not rated item, max rated entity
-    entities = list(mean.columns[1:])
     max_i = 0
     max_ = -1
-    for e in entities:
-        val = Ggh(g_hat, h, int(e), mean, var)
+    for v in V_n:
+        e = v["entity_id"]
+        val = Ggh(g_hat, h, e, mean, var)
         if val > max_:
             max_ = val
             max_i = e
-    V_n.append({'entity_id': h, 'rating': generateRatings(mean, var, g_hat, max_i)})
+    V_n.append({'entity_id': h, 'rating': generateRatings(mean, var, g_actual, max_i)})
     # print('returning V_n:', V_n)
     return V_n
 
@@ -258,11 +259,15 @@ def g_exploration(V_n, g_hat, G, mean, var):  # Algorithm 2
 def evaluate(dataset_n, nclusters):
     print("Evaluating dataset " + str(dataset_n))
     data = import_dataset(dataset_n)
-
     clusters = clusterUsers(data, nclusters)
     data['cluster'] = clusters
+    # Group clusters to calculate mean and variance
     cluster_mean = data.groupby('cluster').mean(numeric_only=True)
+    # the fist column contains the information of the user_id which we do not need
+    cluster_mean = cluster_mean.drop(["user_id"], axis=1)
     cluster_var = data.groupby('cluster').var(numeric_only=True)
+    # the fist column contains the information of the user_id which we do not need
+    cluster_var = cluster_var.drop(["user_id"], axis=1)
     G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
 
     overall_accuracy = []
@@ -270,21 +275,21 @@ def evaluate(dataset_n, nclusters):
     overall_convergence_time = []
 
     for i in range(nclusters):
-        for u in tqdm(range(1000), desc="Running the algorithm for different users", total=1000):
-
-            user_ratings, g_hat = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var, g_hat=i)
+        for u in tqdm(range(10), desc="Running the algorithm for different users", total=10):
+            user_ratings, g_hat = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var, g_actual=i)
             accuracy, regret, convergence_time = get_performance(user_ratings, initial_cluster=i, est_cluster=g_hat)
             overall_accuracy.append(accuracy)
             overall_regret.append(regret)
             overall_convergence_time.append(convergence_time)
     print("Average accuracy: " + str(np.mean(overall_accuracy)))
     print("Average regret: " + str(np.mean(overall_regret)) + "std for regret:" + str(np.std(overall_regret)))
-    print("Average convergence time: " + str(np.mean(overall_convergence_time)) + "std for convergence time:" + str(np.std(overall_convergence_time)))
+    print("Average convergence time: " + str(np.mean(overall_convergence_time)) + "std for convergence time:" + str(
+        np.std(overall_convergence_time)))
 
 
 def test_all_datasets():
     for i in range(1, 4):  # example to test all of the datasets
-        evaluate(i)
+        evaluate(i, 4)
 
 
 def main():
