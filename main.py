@@ -198,10 +198,9 @@ def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_actual):  # Algorithm 1
 
     g_hat = random.randint(0, len(G['cluster'].unique()) - 1)
     V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
-    n = len(list(mean.columns[1:]))
-    for i in range(n):
+    for i in range(25):  # Algorithm should converge within 25 iterations
         M_n = define_candidate_set(V_n, G, mean, var, C, i)
-        if M_n is not None:
+        if len(M_n) > 0:
             g_hat, h = g_hat_select(V_n, G, mean, var)
             V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
             if calc_sigma_n(g_hat, h, V_n, mean, var) >= B or (
@@ -210,6 +209,8 @@ def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_actual):  # Algorithm 1
         else:
             g_hat = g_hat_select2(V_n, G, mean, var, i)
             V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
+        if i == 25:
+            print("Failed to converge")
     return V_n, g_hat
 
 
@@ -274,7 +275,7 @@ def evaluate(dataset_n, nclusters):
     overall_regret = []
     overall_convergence_time = []
 
-    for i in range(nclusters):
+    for i in range(4):
         for u in tqdm(range(10), desc="Running the algorithm for different users", total=10):
             user_ratings, g_hat = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_var, g_actual=i)
             accuracy, regret, convergence_time = get_performance(user_ratings, initial_cluster=i, est_cluster=g_hat)
