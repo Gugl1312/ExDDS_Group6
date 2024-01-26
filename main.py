@@ -145,12 +145,12 @@ def g_hat_select(V_n, G, mean, var):
 
 def calc_Rn(V_n, g, h, mean, var):
     total = 0
-    index=0
+    index = 0
     for v in V_n:
         i = v["entity_id"]
         total += calc_alpha(g, h, i, mean, var, V_n) * (V_n[index]["rating"] - mean.loc[h][i]) / (
                 mean.loc[g][i] - mean.loc[h][i])
-        index+=1
+        index += 1
     return total
 
 
@@ -177,7 +177,7 @@ def g_hat_select2(V_n, G, mean, var, n):
             if g != h:
                 total = 0
                 for v in V_n:
-                    i=v["entity_id"]
+                    i = v["entity_id"]
                     total += Ggh(g, h, i, mean, var)
                 if minVal is None or total < minVal:
                     minVal = total
@@ -188,7 +188,7 @@ def g_hat_select2(V_n, G, mean, var, n):
 def calc_sigma_n(g, h, V_n, mean, var):
     total = 0
     for v in V_n:
-        i=v["entity_id"]
+        i = v["entity_id"]
         total += Ggh(g, h, i, mean, var)
     return total
 
@@ -226,7 +226,7 @@ def g_exploration(V_n, g_hat, G, mean, var, g_actual):  # Algorithm 2
         max_i = 0
         max_ = -1
         for v in V_n:
-            e= v["entity_id"]
+            e = v["entity_id"]
             val = Ggh(g_hat, h, e, mean, var)
             if val > max_:
                 max_ = val
