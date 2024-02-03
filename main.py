@@ -4,7 +4,7 @@ import pandas as pd
 from sklearn.cluster import KMeans
 import warnings
 from tqdm import tqdm
-
+import math
 warnings.filterwarnings("ignore")
 
 
@@ -118,7 +118,7 @@ def get_performance(user_ratings, initial_cluster, est_cluster):
 
 
 def generateRatings(mean, var, g, v):
-    return np.random.normal(mean.loc[g][v], var.loc[g][v])
+    return np.random.normal(mean.loc[g][v], math.sqrt(var.loc[g][v]))
 
 
 def g_hat_select(V_n, G, mean, var):
