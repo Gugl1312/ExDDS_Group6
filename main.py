@@ -95,14 +95,12 @@ def get_performance(user_ratings, initial_cluster, est_cluster):
     user_ratings = pd.DataFrame(user_ratings)
     user_ratings['rating'].astype(float)
     user_ratings_sorted = sorted(user_ratings.values, key=lambda x: x[1], reverse=True)
-    # print('sui', user_ratings_sorted[0][1])
     highest_rating = user_ratings_sorted[0][1]
 
     regret = 0
     for i in range(len(user_ratings_sorted)):
         generated_rating = user_ratings_sorted[i][1]
         regret += float(highest_rating) - float(generated_rating)
-
     # Convergence time
     final_value = round(0.8 * regret)
     convergence_time = 0
@@ -194,7 +192,6 @@ def calc_sigma_n(g, h, V_n, mean, var):
 
 def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_actual):  # Algorithm 1
     V_n = []
-
     g_hat = random.randint(0, len(G['cluster'].unique()) - 1)
     V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
     for i in range(25):  # Algorithm should converge within 25 iterations
@@ -224,8 +221,7 @@ def g_exploration(V_n, g_hat, G, mean, var, g_actual):  # Algorithm 2
                 break
         max_i = 0
         max_ = -1
-        for v in V_n:
-            e = v["entity_id"]
+        for e in range(len(mean.columns)):
             val = Ggh(g_hat, h, e, mean, var)
             if val > max_:
                 max_ = val
@@ -243,13 +239,13 @@ def g_exploration(V_n, g_hat, G, mean, var, g_actual):  # Algorithm 2
             h = h_i
     max_i = 0
     max_ = -1
-    for v in V_n:
-        e = v["entity_id"]
-        val = Ggh(g_hat, h, e, mean, var)
-        if val > max_:
-            max_ = val
-            max_i = e
-    V_n.append({'entity_id': h, 'rating': generateRatings(mean, var, g_actual, max_i)})
+    for e in range(len(mean.columns)):
+        if not any(v["entity_id"] == e for v in V_n):
+            val = Ggh(g_hat, h, e, mean, var)
+            if val > max_:
+                max_ = val
+                max_i = e
+    V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, var, g_actual, max_i)})
     return V_n
 
 
@@ -265,8 +261,10 @@ def evaluate(dataset_n, nclusters):
     cluster_var = data.groupby('cluster').var(numeric_only=True)
     # the fist column contains the information of the user_id which we do not need
     cluster_var = cluster_var.drop(["user_id"], axis=1)
+    # If there is only one item in a group the var will be nan.
+    # Replacing it with a low value is necessary for the algorithm to work.
+    cluster_var = cluster_var.fillna(0.01)
     G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
-
     overall_accuracy = []
     overall_regret = []
     overall_convergence_time = []
