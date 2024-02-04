@@ -1,0 +1,252 @@
+import random
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans
+from tqdm import tqdm
+
+import math
+import warnings
+
+warnings.filterwarnings("ignore")
+
+
+def import_dataset(n):
+    if n == 1:  # Netflix dataset
+        data = pd.read_csv('data/Netflix/data_final.csv')
+        return data
+    elif n == 2:  # Jester dataset
+        X = pd.read_csv('data/Jester/jester_final.csv')
+        X.columns = X.columns.astype(str)
+        X.replace(999, np.nan, inplace=True)
+        X.rename(columns={'0': 'user_id'}, inplace=True)
+        X['user_id'] = range(1, len(X) + 1)
+        return X
+    elif n == 3:  # Goodreads10K dataset
+        data = pd.read_csv('data/Goodreads10K/ratings_final.csv')
+        return data
+    else:
+        print("Error: invalid dataset number")
+        return None
+
+
+def clusterUsers(X, n_clusters, max_iter=10):
+    missing = ~np.isfinite(X)
+    mu = np.nanmean(X, 0, keepdims=1)
+    X_hat = np.where(missing, mu, X)
+    for i in range(max_iter):
+        if i > 0:
+            cls = KMeans(n_clusters, init=prev_centroids)
+        else:
+            cls = KMeans(n_clusters)
+        labels = cls.fit_predict(X_hat)
+        centroids = cls.cluster_centers_
+        X_hat[missing] = centroids[labels][missing]
+        if i > 0 and np.all(labels == prev_labels):
+            break
+        prev_labels = labels
+        prev_centroids = cls.cluster_centers_
+    return labels
+
+
+def Ggh(g, h, i, mean, std):  # Г_gh(v)
+    return ((mean.loc[g][i] + mean.loc[h][i]) ** 2) / std.loc[g][i]
+
+
+def generateRatings(mean, std, g, v):
+    return np.random.normal(mean.loc[g][v], std.loc[g][v])
+
+
+def calc_alpha(g, h, i, mean, std, V_n):
+    total = 0
+    for v in V_n:
+        a = v["entity_id"]
+        total += Ggh(g, h, a, mean, std)
+    return Ggh(g, h, i, mean, std) / total
+
+
+def get_performance(user_ratings, initial_cluster, est_cluster):
+    accuracy = (initial_cluster == est_cluster)
+    user_ratings = pd.DataFrame(user_ratings)
+    user_ratings['rating'].astype(float)
+    user_ratings_sorted = sorted(user_ratings.values, key=lambda x: x[1], reverse=True)
+    highest_rating = user_ratings_sorted[0][1]
+    regret = 0
+    for i in range(len(user_ratings_sorted)):
+        generated_rating = user_ratings_sorted[i][1]
+        regret += float(highest_rating) - float(generated_rating)
+    final_value = round(0.8 * regret)
+    convergence_time = 0
+    regr = 0
+    for i in range(len(user_ratings.values)):
+        convergence_time += 1
+        generated_rating = user_ratings.values[i][1]
+        regr += float(highest_rating) - float(generated_rating)
+        if regr >= final_value:
+            break
+    return accuracy, regret, convergence_time
+
+
+def g_hat_select(V_n, G, mean, std):
+    g_hat = None
+    h_hat_max = None
+    maxVal = None
+    for g in G["cluster"].unique():
+        minVal = None
+        h_hat_min = None
+        for h in G["cluster"].unique():
+            if g != h:
+                Rn = abs(calc_Rn(V_n, g, h, mean, std))
+                if minVal is None or Rn < minVal:
+                    minVal = Rn
+                    h_hat_min = h
+        if maxVal is None or minVal > maxVal:
+            g_hat = g
+            h_hat_max = h_hat_min
+            maxVal = minVal
+    return g_hat, h_hat_max
+
+
+def calc_Rn(V_n, g, h, mean, std):
+    total = 0
+    index = 0
+    for v in V_n:
+        i = v["entity_id"]
+        total += calc_alpha(g, h, i, mean, std, V_n) * (V_n[index]["rating"] - mean.loc[h][i]) / (
+                    mean.loc[g][i] - mean.loc[h][i])
+        index += 1
+    return total
+
+
+def define_candidate_set(V_n, G, mean, std, C, n):
+    M_n = []
+    for g in G["cluster"].unique():
+        minVal = None
+        for h in G["cluster"].unique():
+            if g != h:
+                Rn = abs(calc_Rn(V_n, g, h, mean, std))
+                if minVal is None or Rn < minVal:
+                    minVal = Rn
+        if abs(minVal - 1) <= C:
+            M_n.append(g)
+    return M_n
+
+
+def g_hat_select2(V_n, G, mean, std, n):
+    g_hat = None
+    minVal = None
+    for g in G["cluster"].unique():
+        for h in G["cluster"].unique():
+            if g != h:
+                total = 0
+                for v in V_n:
+                    i = v["entity_id"]
+                    total += Ggh(g, h, i, mean, std)
+                if minVal is None or total < minVal:
+                    minVal = total
+                    g_hat = g
+    return g_hat
+
+
+def calc_sigma_n(g, h, V_n, mean, std):
+    total = 0
+    for v in V_n:
+        i = v["entity_id"]
+        total += Ggh(g, h, i, mean, std)
+    return total
+
+
+def clusterBasedBanditAlgorithm(B, C, D, G, mean, std, g_actual):  # Algorithm 1
+    V_n = []
+    g_hat = random.randint(0, len(G['cluster'].unique()) - 1)
+    V_n = g_exploration(V_n, g_hat, G, mean, std, g_actual)
+    for i in range(25):  # Algorithm should converge within 25 iterations
+        M_n = define_candidate_set(V_n, G, mean, std, C, i)
+        if len(M_n) > 0:
+            g_hat, h = g_hat_select(V_n, G, mean, std)
+            V_n = g_exploration(V_n, g_hat, G, mean, std, g_actual)
+            if calc_sigma_n(g_hat, h, V_n, mean, std) >= B or (
+                    len(M_n) == 1 and (i + 1) > D * np.log2(len(G['cluster'].unique()))):
+                return V_n, g_hat
+        else:
+            g_hat = g_hat_select2(V_n, G, mean, std, i)
+            V_n = g_exploration(V_n, g_hat, G, mean, std, g_actual)
+        if i == 25:
+            print("Failed to converge")
+    return V_n, g_hat
+
+
+def g_exploration(V_n, g_hat, G, mean, std, g_actual):  # Algorithm 2
+    n = len(V_n)
+    groups = G['cluster'].unique()
+    if n == 0:  # rating the first item
+        while True:
+            h = random.randint(0, len(G['cluster'].unique()) - 1)
+            if h != g_hat:
+                break
+        max_i = 0
+        max_ = -1
+        for e in range(len(mean.columns)):
+            val = Ggh(g_hat, h, e, mean, std)
+            if val > max_:
+                max_ = val
+                max_i = e
+        V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, std, g_actual, max_i)})
+        return V_n
+    h = -1
+    Min_ = np.inf
+    for h_i in groups:
+        min_ = 0
+        for i in range(len(V_n)):
+            min_ += Ggh(g_hat, h_i, V_n[i]['entity_id'], mean, std)
+        if min_ < Min_:
+            Min_ = min_
+            h = h_i
+    max_i = 0
+    max_ = -1
+    for e in range(len(mean.columns)):
+        if not any(v["entity_id"] == e for v in V_n):
+            val = Ggh(g_hat, h, e, mean, std)
+            if val > max_:
+                max_ = val
+                max_i = e
+    V_n.append({'entity_id': max_i, 'rating': generateRatings(mean, std, g_actual, max_i)})
+    return V_n
+
+
+def evaluate(dataset_n, nclusters):
+    print("Evaluating dataset " + str(dataset_n))
+    data = import_dataset(dataset_n)
+    clusters = clusterUsers(data, nclusters)
+    data['cluster'] = clusters
+    cluster_mean = data.groupby('cluster').mean(numeric_only=True).drop(["user_id"], axis=1)
+    cluster_std = data.groupby('cluster').std(numeric_only=True).drop(["user_id"], axis=1)
+    G = pd.DataFrame({'user_id': data['user_id'], 'cluster': data['cluster']})
+    overall_accuracy = []
+    overall_regret = []
+    overall_convergence_time = []
+    n_users = 1000
+    random.seed(6)
+    for _ in tqdm(range(n_users), desc="Running the algorithm for different users", total=n_users):
+        i = random.randint(0, nclusters - 1)
+        user_ratings, g_hat = clusterBasedBanditAlgorithm(5, 0.5, 3, G, cluster_mean, cluster_std, g_actual=i)
+        accuracy, regret, convergence_time = get_performance(user_ratings, initial_cluster=i, est_cluster=g_hat)
+        overall_accuracy.append(accuracy)
+        overall_regret.append(regret)
+        overall_convergence_time.append(convergence_time)
+    print("Average accuracy: " + str(np.mean(overall_accuracy)))
+    print("Average regret: " + str(np.mean(overall_regret)) + "std for regret:" + str(np.std(overall_regret)))
+    print("Average convergence time: " + str(np.mean(overall_convergence_time)) + "std for convergence time:" +
+          str(np.std(overall_convergence_time)))
+
+
+def test_all_datasets():
+    for i in range(1, 4):
+        evaluate(i, 4)
+
+
+def main():
+    evaluate(2, 4)
+
+
+if __name__ == '__main__':
+    main()
