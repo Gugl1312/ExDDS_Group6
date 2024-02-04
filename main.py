@@ -5,6 +5,7 @@ from sklearn.cluster import KMeans
 import warnings
 from tqdm import tqdm
 import math
+
 warnings.filterwarnings("ignore")
 
 
@@ -75,10 +76,12 @@ def clusterUsers(X, n_clusters, max_iter=10):
     return labels
 
 
-def Ggh(g, h, i, mean, var):  # Г_gh(v)
+# Implementation of the function Г_gh(v)
+def Ggh(g, h, i, mean, var):
     return ((mean.loc[g][i] + mean.loc[h][i]) ** 2) / (var.loc[g][i])
 
 
+# Calculates the alphas
 def calc_alpha(g, h, i, mean, var, V_n):
     total = 0
     for v in V_n:
@@ -87,6 +90,7 @@ def calc_alpha(g, h, i, mean, var, V_n):
     return Ggh(g, h, i, mean, var) / total
 
 
+# Calculates the performance of the results
 def get_performance(user_ratings, initial_cluster, est_cluster):
     # Accuracy
     accuracy = (initial_cluster == est_cluster)
@@ -117,10 +121,12 @@ def get_performance(user_ratings, initial_cluster, est_cluster):
     return accuracy, regret, convergence_time
 
 
+# Generates a new Rating for someone of group g of item v.
 def generateRatings(mean, var, g, v):
     return np.random.normal(mean.loc[g][v], math.sqrt(var.loc[g][v]))
 
 
+# Calculates the g_hat
 def g_hat_select(V_n, G, mean, var):
     g_hat = None
     h_hat_max = None
@@ -141,12 +147,14 @@ def g_hat_select(V_n, G, mean, var):
     return g_hat, h_hat_max
 
 
+# Calculates the value of the function Rn
 def calc_Rn(V_n, g, h, mean, var):
     total = 0
     index = 0
     for v in V_n:
         i = v["entity_id"]
-        total += calc_alpha(g, h, i, mean, var, V_n) * (V_n[index]["rating"] - mean.loc[h][i]) / (mean.loc[g][i] - mean.loc[h][i])
+        total += calc_alpha(g, h, i, mean, var, V_n) * (V_n[index]["rating"] - mean.loc[h][i]) / (
+                mean.loc[g][i] - mean.loc[h][i])
         index += 1
     return total
 
@@ -166,6 +174,7 @@ def define_candidate_set(V_n, G, mean, var, C, n):
     return M_n
 
 
+# another function for calculating g_hat
 def g_hat_select2(V_n, G, mean, var, n):
     g_hat = None
     minVal = None
@@ -182,6 +191,7 @@ def g_hat_select2(V_n, G, mean, var, n):
     return g_hat
 
 
+# Calculate the sigma_n function
 def calc_sigma_n(g, h, V_n, mean, var):
     total = 0
     for v in V_n:
@@ -190,7 +200,8 @@ def calc_sigma_n(g, h, V_n, mean, var):
     return total
 
 
-def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_actual):  # Algorithm 1
+# Algorithm 1
+def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_actual):
     V_n = []
     g_hat = random.randint(0, len(G['cluster'].unique()) - 1)
     V_n = g_exploration(V_n, g_hat, G, mean, var, g_actual)
@@ -210,7 +221,8 @@ def clusterBasedBanditAlgorithm(B, C, D, G, mean, var, g_actual):  # Algorithm 1
     return V_n, g_hat
 
 
-def g_exploration(V_n, g_hat, G, mean, var, g_actual):  # Algorithm 2
+# Algorithm 2
+def g_exploration(V_n, g_hat, G, mean, var, g_actual):
     n = len(V_n)
     groups = G['cluster'].unique()
 
@@ -249,6 +261,8 @@ def g_exploration(V_n, g_hat, G, mean, var, g_actual):  # Algorithm 2
     return V_n
 
 
+# Runs the proposed algorithms and evaluates the result for dataset with the number dataset_n.
+# With nclusters being the number of clusters
 def evaluate(dataset_n, nclusters):
     print("Evaluating dataset " + str(dataset_n))
     data = import_dataset(dataset_n)
@@ -279,13 +293,8 @@ def evaluate(dataset_n, nclusters):
         overall_convergence_time.append(convergence_time)
     print("Average accuracy: " + str(np.mean(overall_accuracy)))
     print("Average regret: " + str(np.mean(overall_regret)) + "std for regret:" + str(np.std(overall_regret)))
-    print("Average convergence time: " + str(np.mean(overall_convergence_time)) + "std for convergence time:" + 
-        str(np.std(overall_convergence_time)))
-
-
-def test_all_datasets():
-    for i in range(1, 4):  # example to test all of the datasets
-        evaluate(i, 4)
+    print("Average convergence time: " + str(np.mean(overall_convergence_time)) + "std for convergence time:" +
+          str(np.std(overall_convergence_time)))
 
 
 def main():
